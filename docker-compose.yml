@@ -1,0 +1,211 @@
+version: '3.8'
+
+services:
+  # RabbitMQ 消息队列
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: bookstore-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP 端口
+      - "15672:15672" # 管理界面端口
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - bookstore-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: bookstore-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - bookstore-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Jaeger 分布式追踪
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: bookstore-jaeger
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - bookstore-network
+
+  # API 网关
+  gateway:
+    build:
+      context: ./src/Gateway
+      dockerfile: Dockerfile
+    container_name: bookstore-gateway
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - Services__IdentityService=http://identity-service:8080
+      - Services__CatalogService=http://catalog-service:8080
+      - Services__BasketService=http://basket-service:8080
+      - Services__OrderingService=http://ordering-service:8080
+      - RabbitMQ__Host=rabbitmq
+      - Redis__ConnectionString=redis:6379
+      - Jaeger__AgentHost=jaeger
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    networks:
+      - bookstore-network
+
+  # 身份认证服务
+  identity-service:
+    build:
+      context: ./src/Services/IdentityService
+      dockerfile: Dockerfile
+    container_name: bookstore-identity
+    ports:
+      - "5001:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/identity.db
+      - JwtSettings__Secret=YourSuperSecretKeyForJWTTokenGeneration123456!
+      - JwtSettings__Issuer=OnlineBookstore
+      - JwtSettings__Audience=OnlineBookstoreClient
+      - JwtSettings__ExpirationMinutes=60
+      - RabbitMQ__Host=rabbitmq
+      - Jaeger__AgentHost=jaeger
+    volumes:
+      - identity_data:/app/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    networks:
+      - bookstore-network
+
+  # 商品目录服务
+  catalog-service:
+    build:
+      context: ./src/Services/CatalogService
+      dockerfile: Dockerfile
+    container_name: bookstore-catalog
+    ports:
+      - "5002:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/catalog.db
+      - Redis__ConnectionString=redis:6379
+      - Redis__CacheExpirationMinutes=30
+      - RabbitMQ__Host=rabbitmq
+      - Jaeger__AgentHost=jaeger
+    volumes:
+      - catalog_data:/app/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    networks:
+      - bookstore-network
+
+  # 购物车服务
+  basket-service:
+    build:
+      context: ./src/Services/BasketService
+      dockerfile: Dockerfile
+    container_name: bookstore-basket
+    ports:
+      - "5003:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/basket.db
+      - RabbitMQ__Host=rabbitmq
+      - Jaeger__AgentHost=jaeger
+    volumes:
+      - basket_data:/app/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    networks:
+      - bookstore-network
+
+  # 订单服务
+  ordering-service:
+    build:
+      context: ./src/Services/OrderingService
+      dockerfile: Dockerfile
+    container_name: bookstore-ordering
+    ports:
+      - "5004:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/ordering.db
+      - RabbitMQ__Host=rabbitmq
+      - Jaeger__AgentHost=jaeger
+    volumes:
+      - ordering_data:/app/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    networks:
+      - bookstore-network
+
+  # Vue 前端
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: bookstore-frontend
+    ports:
+      - "5173:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:5000
+    depends_on:
+      - gateway
+    networks:
+      - bookstore-network
+
+networks:
+  bookstore-network:
+    driver: bridge
+
+volumes:
+  rabbitmq_data:
+  redis_data:
+  identity_data:
+  catalog_data:
+  basket_data:
+  ordering_data:
