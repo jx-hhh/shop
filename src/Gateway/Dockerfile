@@ -6,15 +6,15 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # 复制项目文件
-COPY ["Gateway/Gateway.csproj", "Gateway/"]
-COPY ["Shared/Shared.csproj", "Shared/"]
+COPY ["src/Gateway/Gateway.csproj", "src/Gateway/"]
+COPY ["src/Shared/Shared.csproj", "src/Shared/"]
 
 # 还原依赖
-RUN dotnet restore "Gateway/Gateway.csproj"
+RUN dotnet restore "src/Gateway/Gateway.csproj"
 
 # 复制所有文件并构建
 COPY . .
-WORKDIR "/src/Gateway"
+WORKDIR "/src/src/Gateway"
 RUN dotnet build "Gateway.csproj" -c Release -o /app/build
 
 FROM build AS publish

@@ -6,15 +6,15 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # 复制项目文件
-COPY ["Services/CatalogService/CatalogService.csproj", "Services/CatalogService/"]
-COPY ["Shared/Shared.csproj", "Shared/"]
+COPY ["src/Services/CatalogService/CatalogService.csproj", "src/Services/CatalogService/"]
+COPY ["src/Shared/Shared.csproj", "src/Shared/"]
 
 # 还原依赖
-RUN dotnet restore "Services/CatalogService/CatalogService.csproj"
+RUN dotnet restore "src/Services/CatalogService/CatalogService.csproj"
 
 # 复制所有文件并构建
 COPY . .
-WORKDIR "/src/Services/CatalogService"
+WORKDIR "/src/src/Services/CatalogService"
 RUN dotnet build "CatalogService.csproj" -c Release -o /app/build
 
 FROM build AS publish

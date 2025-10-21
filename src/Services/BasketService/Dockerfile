@@ -6,15 +6,15 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # 复制项目文件
-COPY ["Services/BasketService/BasketService.csproj", "Services/BasketService/"]
-COPY ["Shared/Shared.csproj", "Shared/"]
+COPY ["src/Services/BasketService/BasketService.csproj", "src/Services/BasketService/"]
+COPY ["src/Shared/Shared.csproj", "src/Shared/"]
 
 # 还原依赖
-RUN dotnet restore "Services/BasketService/BasketService.csproj"
+RUN dotnet restore "src/Services/BasketService/BasketService.csproj"
 
 # 复制所有文件并构建
 COPY . .
-WORKDIR "/src/Services/BasketService"
+WORKDIR "/src/src/Services/BasketService"
 RUN dotnet build "BasketService.csproj" -c Release -o /app/build
 
 FROM build AS publish
