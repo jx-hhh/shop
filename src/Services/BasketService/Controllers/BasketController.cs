@@ -94,4 +94,40 @@ public class BasketController : ControllerBase
 
         return Ok(result);
     }
+
+    /// <summary>
+    /// 根据用户ID获取购物车（供其他服务调用）
+    /// </summary>
+    [HttpGet("user/{userId}")]
+    [AllowAnonymous] // 允许服务间调用，实际应该使用服务间认证
+    public async Task<ActionResult<ApiResponse<BasketDto>>> GetBasketByUserId(string userId)
+    {
+        _logger.LogInformation("Getting basket for user {UserId}", userId);
+        var result = await _basketService.GetBasketByUserIdAsync(userId);
+
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// 清空用户购物车（供其他服务调用）
+    /// </summary>
+    [HttpDelete("user/{userId}/clear")]
+    [AllowAnonymous] // 允许服务间调用，实际应该使用服务间认证
+    public async Task<ActionResult<ApiResponse<bool>>> ClearBasket(string userId)
+    {
+        _logger.LogInformation("Clearing basket for user {UserId}", userId);
+        var result = await _basketService.ClearBasketAsync(userId);
+
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
 }

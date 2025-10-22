@@ -18,15 +18,18 @@ public class OrderService : IOrderService
 {
     private readonly IOrderRepository _repository;
     private readonly IEventBus _eventBus;
+    private readonly IBasketServiceClient _basketServiceClient;
     private readonly ILogger<OrderService> _logger;
 
     public OrderService(
         IOrderRepository repository,
         IEventBus eventBus,
+        IBasketServiceClient basketServiceClient,
         ILogger<OrderService> logger)
     {
         _repository = repository;
         _eventBus = eventBus;
+        _basketServiceClient = basketServiceClient;
         _logger = logger;
     }
 
@@ -77,12 +80,27 @@ public class OrderService : IOrderService
             return ApiResponse<OrderDto>.ErrorResponse("Unauthorized");
         }
 
-        // 这里简化处理，实际应该：
         // 1. 从 BasketService 获取购物车内容
-        // 2. 从 CatalogService 验证商品库存和价格
-        // 3. 扣减库存
-        // 为了演示，创建一个简单的订单
+        var basket = await _basketServiceClient.GetBasketByUserIdAsync(userId);
+        if (basket == null || !basket.Items.Any())
+        {
+            return ApiResponse<OrderDto>.ErrorResponse("Basket is empty or not found");
+        }
 
+        // 2. 将购物车商品转换为订单商品项
+        var orderItems = basket.Items.Select(item => new OrderItem
+        {
+            BookId = item.BookId,
+            BookTitle = item.BookTitle,
+            BookAuthor = item.BookAuthor,
+            Price = item.Price,
+            Quantity = item.Quantity
+        }).ToList();
+
+        // 3. 计算订单总金额
+        var totalAmount = orderItems.Sum(item => item.Price * item.Quantity);
+
+        // 4. 创建订单
         var order = new Order
         {
             OrderNumber = GenerateOrderNumber(),
@@ -90,14 +108,14 @@ public class OrderService : IOrderService
             ShippingAddress = request.ShippingAddress,
             ContactPhone = request.ContactPhone,
             Status = "Pending",
-            TotalAmount = 0, // 应该从购物车计算
-            Items = new List<OrderItem>() // 应该从购物车获取
+            TotalAmount = totalAmount,
+            Items = orderItems
         };
 
         var orderId = await _repository.CreateAsync(order);
         order.Id = orderId;
 
-        // 发布订单创建事件
+        // 5. 发布订单创建事件（用于清空购物车等后续操作）
         var orderCreatedEvent = new OrderCreatedEvent
         {
             OrderId = orderId,
@@ -107,7 +125,7 @@ public class OrderService : IOrderService
         };
 
         await _eventBus.PublishAsync(orderCreatedEvent);
-        _logger.LogInformation("Published OrderCreatedEvent for order {OrderId}", orderId);
+        _logger.LogInformation("Published OrderCreatedEvent for order {OrderId}, user {UserId}", orderId, userId);
 
         var orderDto = MapToDto(order);
         return ApiResponse<OrderDto>.SuccessResponse(orderDto, "Order created successfully");

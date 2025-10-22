@@ -147,6 +147,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__DefaultConnection=Data Source=/app/data/basket.db
+      - ServiceUrls__CatalogService=http://catalog-service:8080
       - RabbitMQ__Host=rabbitmq
       - Jaeger__AgentHost=jaeger
     volumes:
@@ -155,6 +156,8 @@ services:
       rabbitmq:
         condition: service_healthy
       jaeger:
+        condition: service_started
+      catalog-service:
         condition: service_started
     networks:
       - bookstore-network
@@ -171,6 +174,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__DefaultConnection=Data Source=/app/data/ordering.db
+      - ServiceUrls__BasketService=http://basket-service:8080
       - RabbitMQ__Host=rabbitmq
       - Jaeger__AgentHost=jaeger
     volumes:
@@ -179,6 +183,8 @@ services:
       rabbitmq:
         condition: service_healthy
       jaeger:
+        condition: service_started
+      basket-service:
         condition: service_started
     networks:
       - bookstore-network

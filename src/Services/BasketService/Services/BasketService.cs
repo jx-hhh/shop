@@ -8,6 +8,7 @@ namespace BasketService.Services;
 public interface IBasketService
 {
     Task<ApiResponse<BasketDto>> GetMyBasketAsync(ClaimsPrincipal user);
+    Task<ApiResponse<BasketDto>> GetBasketByUserIdAsync(string userId);
     Task<ApiResponse<BasketDto>> AddItemAsync(ClaimsPrincipal user, AddToBasketRequest request);
     Task<ApiResponse<BasketDto>> UpdateItemQuantityAsync(ClaimsPrincipal user, UpdateBasketItemRequest request);
     Task<ApiResponse<bool>> RemoveItemAsync(ClaimsPrincipal user, int itemId);
@@ -17,11 +18,16 @@ public interface IBasketService
 public class BasketService : IBasketService
 {
     private readonly IBasketRepository _repository;
+    private readonly ICatalogServiceClient _catalogServiceClient;
     private readonly ILogger<BasketService> _logger;
 
-    public BasketService(IBasketRepository repository, ILogger<BasketService> logger)
+    public BasketService(
+        IBasketRepository repository,
+        ICatalogServiceClient catalogServiceClient,
+        ILogger<BasketService> logger)
     {
         _repository = repository;
+        _catalogServiceClient = catalogServiceClient;
         _logger = logger;
     }
 
@@ -31,6 +37,19 @@ public class BasketService : IBasketService
         if (string.IsNullOrEmpty(userId))
         {
             return ApiResponse<BasketDto>.ErrorResponse("Unauthorized");
+        }
+
+        var basket = await GetOrCreateBasketAsync(userId);
+        var basketDto = MapToDto(basket);
+
+        return ApiResponse<BasketDto>.SuccessResponse(basketDto);
+    }
+
+    public async Task<ApiResponse<BasketDto>> GetBasketByUserIdAsync(string userId)
+    {
+        if (string.IsNullOrEmpty(userId))
+        {
+            return ApiResponse<BasketDto>.ErrorResponse("UserId is required");
         }
 
         var basket = await GetOrCreateBasketAsync(userId);
@@ -59,15 +78,21 @@ public class BasketService : IBasketService
         }
         else
         {
-            // 这里应该从 CatalogService 获取图书信息，简化起见直接添加
-            // 实际项目中需要通过 HTTP 客户端调用 CatalogService API
+            // 从 CatalogService 获取图书信息
+            var book = await _catalogServiceClient.GetBookAsync(request.BookId);
+            if (book == null)
+            {
+                return ApiResponse<BasketDto>.ErrorResponse($"Book with ID {request.BookId} not found");
+            }
+
             var newItem = new BasketItem
             {
                 BasketId = basket.Id,
                 BookId = request.BookId,
-                BookTitle = "Sample Book",  // 应该从 CatalogService 获取
-                BookAuthor = "Sample Author",
-                Price = 0,  // 应该从 CatalogService 获取
+                BookTitle = book.Title,
+                BookAuthor = book.Author,
+                BookImageUrl = book.ImageUrl,
+                Price = book.Price,
                 Quantity = request.Quantity
             };
 

@@ -15,18 +15,32 @@ public class OrderCreatedEventHandler : IIntegrationEventHandler<OrderCreatedEve
 
     public async Task HandleAsync(OrderCreatedEvent @event)
     {
-        _logger.LogInformation("Handling OrderCreated event for user: {UserId}, order: {OrderId}",
-            @event.UserId, @event.OrderId);
+        _logger.LogInformation("============================================");
+        _logger.LogInformation("Handling OrderCreated event - OrderId: {OrderId}, UserId: {UserId}, OrderNumber: {OrderNumber}",
+            @event.OrderId, @event.UserId, @event.OrderNumber);
 
         try
         {
-            await _basketService.ClearBasketAsync(@event.UserId);
-            _logger.LogInformation("Basket cleared for user: {UserId} after order creation", @event.UserId);
+            var result = await _basketService.ClearBasketAsync(@event.UserId);
+
+            if (result.Success)
+            {
+                _logger.LogInformation("Successfully cleared basket for user: {UserId} after order {OrderNumber} creation",
+                    @event.UserId, @event.OrderNumber);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to clear basket for user: {UserId} after order {OrderNumber} creation. Error: {Error}",
+                    @event.UserId, @event.OrderNumber, result.Message);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error clearing basket for user: {UserId}", @event.UserId);
-            throw;
+            _logger.LogError(ex, "Error clearing basket for user: {UserId}, OrderNumber: {OrderNumber}",
+                @event.UserId, @event.OrderNumber);
+            // 不抛出异常，避免消息重试
         }
+
+        _logger.LogInformation("============================================");
     }
 }

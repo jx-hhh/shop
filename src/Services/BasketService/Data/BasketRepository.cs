@@ -18,11 +18,13 @@ public interface IBasketRepository
 public class BasketRepository : IBasketRepository
 {
     private readonly string _connectionString;
+    private readonly ILogger<BasketRepository> _logger;
 
-    public BasketRepository(IConfiguration configuration)
+    public BasketRepository(IConfiguration configuration, ILogger<BasketRepository> logger)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("Connection string not found");
+        _logger = logger;
     }
 
     public async Task<Basket?> GetByUserIdAsync(string userId)
@@ -60,18 +62,26 @@ public class BasketRepository : IBasketRepository
     {
         using var connection = new SqliteConnection(_connectionString);
 
+        _logger.LogInformation("Attempting to clear basket for user: {UserId}", userId);
+
         // 获取购物车 ID
         const string getBasketIdSql = "SELECT Id FROM Baskets WHERE UserId = @UserId";
         var basketId = await connection.ExecuteScalarAsync<int?>(getBasketIdSql, new { UserId = userId });
 
         if (basketId == null)
         {
+            _logger.LogWarning("No basket found for user: {UserId}", userId);
             return false;
         }
 
+        _logger.LogInformation("Found basket {BasketId} for user: {UserId}", basketId.Value, userId);
+
         // 删除所有购物车项
         const string deleteItemsSql = "DELETE FROM BasketItems WHERE BasketId = @BasketId";
-        await connection.ExecuteAsync(deleteItemsSql, new { BasketId = basketId.Value });
+        var deletedCount = await connection.ExecuteAsync(deleteItemsSql, new { BasketId = basketId.Value });
+
+        _logger.LogInformation("Deleted {Count} items from basket {BasketId} for user: {UserId}",
+            deletedCount, basketId.Value, userId);
 
         return true;
     }

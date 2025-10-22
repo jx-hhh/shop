@@ -29,16 +29,28 @@ public class RabbitMQEventBus : IEventBus, IDisposable
         _eventTypes = new Dictionary<string, Type>();
         _handlerTypes = new Dictionary<string, Type>();
 
+        _logger.LogInformation("Connecting to RabbitMQ at {HostName}", hostName);
+
         var factory = new ConnectionFactory
         {
             HostName = hostName,
             DispatchConsumersAsync = true
         };
 
-        _connection = factory.CreateConnection();
-        _channel = _connection.CreateModel();
+        try
+        {
+            _connection = factory.CreateConnection();
+            _channel = _connection.CreateModel();
 
-        _channel.ExchangeDeclare(exchange: "bookstore_event_bus", type: ExchangeType.Topic, durable: true);
+            _channel.ExchangeDeclare(exchange: "bookstore_event_bus", type: ExchangeType.Topic, durable: true);
+
+            _logger.LogInformation("Successfully connected to RabbitMQ and declared exchange 'bookstore_event_bus'");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to connect to RabbitMQ at {HostName}", hostName);
+            throw;
+        }
     }
 
     public async Task PublishAsync<T>(T @event) where T : IntegrationEvent
@@ -47,6 +59,9 @@ public class RabbitMQEventBus : IEventBus, IDisposable
         var message = JsonSerializer.Serialize(@event);
         var body = Encoding.UTF8.GetBytes(message);
 
+        _logger.LogInformation("Publishing event {EventName} with ID {EventId}. Message: {Message}",
+            eventName, @event.Id, message);
+
         _channel.BasicPublish(
             exchange: "bookstore_event_bus",
             routingKey: eventName,
@@ -54,7 +69,7 @@ public class RabbitMQEventBus : IEventBus, IDisposable
             body: body
         );
 
-        _logger.LogInformation("Published event {EventName} with ID {EventId}", eventName, @event.Id);
+        _logger.LogInformation("Successfully published event {EventName} with ID {EventId}", eventName, @event.Id);
 
         await Task.CompletedTask;
     }
@@ -66,6 +81,9 @@ public class RabbitMQEventBus : IEventBus, IDisposable
         var eventName = typeof(T).Name;
         var handlerType = typeof(TH);
 
+        _logger.LogInformation("Subscribing to event {EventName} with handler {HandlerName}",
+            eventName, handlerType.Name);
+
         if (!_eventTypes.ContainsKey(eventName))
         {
             _eventTypes.Add(eventName, typeof(T));
@@ -75,33 +93,45 @@ public class RabbitMQEventBus : IEventBus, IDisposable
             _channel.QueueDeclare(queue: queueName, durable: true, exclusive: false, autoDelete: false);
             _channel.QueueBind(queue: queueName, exchange: "bookstore_event_bus", routingKey: eventName);
 
+            _logger.LogInformation("Created and bound queue {QueueName} to exchange bookstore_event_bus with routing key {RoutingKey}",
+                queueName, eventName);
+
             var consumer = new AsyncEventingBasicConsumer(_channel);
             consumer.Received += async (model, ea) =>
             {
                 var body = ea.Body.ToArray();
                 var message = Encoding.UTF8.GetString(body);
 
+                _logger.LogInformation("Received event {EventName}. Message: {Message}", eventName, message);
+
                 try
                 {
                     await ProcessEvent(eventName, message);
                     _channel.BasicAck(ea.DeliveryTag, false);
+                    _logger.LogInformation("Successfully processed and acknowledged event {EventName}", eventName);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error processing event {EventName}", eventName);
+                    _logger.LogError(ex, "Error processing event {EventName}. Message: {Message}", eventName, message);
                     _channel.BasicNack(ea.DeliveryTag, false, true);
                 }
             };
 
             _channel.BasicConsume(queue: queueName, autoAck: false, consumer: consumer);
 
-            _logger.LogInformation("Subscribed to event {EventName} with handler {HandlerName}",
+            _logger.LogInformation("Successfully subscribed to event {EventName} with handler {HandlerName}",
                 eventName, handlerType.Name);
+        }
+        else
+        {
+            _logger.LogWarning("Already subscribed to event {EventName}", eventName);
         }
     }
 
     private async Task ProcessEvent(string eventName, string message)
     {
+        _logger.LogInformation("Processing event {EventName}", eventName);
+
         if (_eventTypes.TryGetValue(eventName, out var eventType) &&
             _handlerTypes.TryGetValue(eventName, out var handlerType))
         {
@@ -111,9 +141,24 @@ public class RabbitMQEventBus : IEventBus, IDisposable
 
             if (handler != null && @event != null)
             {
+                _logger.LogInformation("Invoking handler {HandlerName} for event {EventName}",
+                    handlerType.Name, eventName);
+
                 var method = handlerType.GetMethod("HandleAsync");
                 await (Task)method!.Invoke(handler, new[] { @event })!;
+
+                _logger.LogInformation("Handler {HandlerName} completed for event {EventName}",
+                    handlerType.Name, eventName);
             }
+            else
+            {
+                _logger.LogWarning("Handler or event is null. Handler: {Handler}, Event: {Event}",
+                    handler?.GetType().Name ?? "null", @event?.GetType().Name ?? "null");
+            }
+        }
+        else
+        {
+            _logger.LogWarning("No handler found for event {EventName}", eventName);
         }
     }
 

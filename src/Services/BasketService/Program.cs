@@ -22,31 +22,41 @@ builder.Services.AddSingleton<DatabaseInitializer>();
 // 4. 注册业务服务
 builder.Services.AddScoped<BasketService.Services.IBasketService, BasketService.Services.BasketService>();
 
-// 5. 注册事件处理器
-builder.Services.AddScoped<IIntegrationEventHandler<OrderCreatedEvent>, OrderCreatedEventHandler>();
+// 5. 注册 CatalogService HTTP 客户端
+var catalogServiceUrl = builder.Configuration["ServiceUrls:CatalogService"] ?? "http://localhost:5002";
+builder.Services.AddHttpClient<BasketService.Services.ICatalogServiceClient, BasketService.Services.CatalogServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(catalogServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
-// 6. 添加 JWT 认证
+// 6. 注册事件处理器
+builder.Services.AddScoped<OrderCreatedEventHandler>();
+builder.Services.AddScoped<IIntegrationEventHandler<OrderCreatedEvent>>(sp =>
+    sp.GetRequiredService<OrderCreatedEventHandler>());
+
+// 7. 添加 JWT 认证
 builder.Services.AddJwtAuthentication(builder.Configuration);
 
-// 7. 添加授权
+// 8. 添加授权
 builder.Services.AddAuthorization();
 
-// 8. 添加 RabbitMQ 事件总线
+// 9. 添加 RabbitMQ 事件总线
 builder.Services.AddRabbitMQEventBus(builder.Configuration);
 
-// 9. 添加 OpenTelemetry 追踪
+// 10. 添加 OpenTelemetry 追踪
 builder.Services.AddOpenTelemetryTracing("BasketService", builder.Configuration);
 
-// 10. 添加 Swagger 文档
+// 11. 添加 Swagger 文档
 builder.Services.AddSwaggerDocumentation("Basket Service");
 
-// 11. 添加健康检查
+// 12. 添加健康检查
 builder.Services.AddHealthChecks();
 
-// 12. 添加内存缓存（用于限流）
+// 13. 添加内存缓存（用于限流）
 builder.Services.AddMemoryCacheForRateLimiting();
 
-// 13. 添加 CORS
+// 14. 添加 CORS
 builder.Services.AddCorsPolicy();
 
 var app = builder.Build();

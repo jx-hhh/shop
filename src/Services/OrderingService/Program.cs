@@ -21,28 +21,37 @@ builder.Services.AddSingleton<DatabaseInitializer>();
 // 4. 注册业务服务
 builder.Services.AddScoped<IOrderService, OrderService>();
 
-// 5. 添加 JWT 认证
+// 5. 注册 BasketService HTTP 客户端
+builder.Services.AddHttpClient<IBasketServiceClient, BasketServiceClient>(client =>
+{
+    var basketServiceUrl = builder.Configuration["ServiceUrls:BasketService"]
+        ?? "http://localhost:5002";
+    client.BaseAddress = new Uri(basketServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+// 6. 添加 JWT 认证
 builder.Services.AddJwtAuthentication(builder.Configuration);
 
-// 6. 添加授权
+// 7. 添加授权
 builder.Services.AddAuthorization();
 
-// 7. 添加 RabbitMQ 事件总线
+// 8. 添加 RabbitMQ 事件总线
 builder.Services.AddRabbitMQEventBus(builder.Configuration);
 
-// 8. 添加 OpenTelemetry 追踪
+// 9. 添加 OpenTelemetry 追踪
 builder.Services.AddOpenTelemetryTracing("OrderingService", builder.Configuration);
 
-// 9. 添加 Swagger 文档
+// 10. 添加 Swagger 文档
 builder.Services.AddSwaggerDocumentation("Ordering Service");
 
-// 10. 添加健康检查
+// 11. 添加健康检查
 builder.Services.AddHealthChecks();
 
-// 11. 添加内存缓存（用于限流）
+// 12. 添加内存缓存（用于限流）
 builder.Services.AddMemoryCacheForRateLimiting();
 
-// 12. 添加 CORS
+// 13. 添加 CORS
 builder.Services.AddCorsPolicy();
 
 var app = builder.Build();
