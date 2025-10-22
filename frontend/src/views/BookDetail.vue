@@ -10,7 +10,7 @@
 
       <div v-if="book" class="book-content">
         <div class="book-image-section">
-          <img :src="book.imageUrl || '/placeholder.jpg'" alt="" class="book-detail-image" />
+          <img :src="book.imageUrl || '/placeholder.svg'" :alt="book.title" class="book-detail-image" @error="handleImageError" />
         </div>
 
         <div class="book-info-section">
@@ -94,6 +94,10 @@ const addToBasket = async () => {
   } catch (error) {
     ElMessage.error('加入购物车失败')
   }
+}
+
+const handleImageError = (e) => {
+  e.target.src = '/placeholder.svg'
 }
 
 onMounted(() => {
